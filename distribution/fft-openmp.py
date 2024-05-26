@@ -1,23 +1,9 @@
 import numpy as np
 from numba import njit, prange
 import time
+from numba.np.ufunc.parallel import set_num_threads
+import matplotlib.pyplot as plt
 
-@njit(parallel=True)
-def fft_parallel(signal):
-    n = len(signal)
-    signal = signal.astype(np.complex128)  # Преобразование входного массива в комплексные числа
-    if n <= 1:
-        return signal
-    even = fft_parallel(signal[0::2])
-    odd = fft_parallel(signal[1::2])
-    T = np.empty(n // 2, dtype=np.complex128)
-    for k in prange(n // 2):  # Использование prange для параллельного выполнения цикла
-        T[k] = np.exp(-2j * np.pi * k / n) * odd[k]
-    result = np.empty(n, dtype=np.complex128)
-    for k in range(n // 2):  # Ещё один параллельный цикл
-        result[k] = even[k] + T[k]
-        result[k + n // 2] = even[k] - T[k]
-    return result
 
 def fft(signal):
     n = len(signal)
@@ -28,6 +14,7 @@ def fft(signal):
     T = [np.exp(-2j * np.pi * k / n) * odd[k] for k in range(n // 2)]
     return [even[k] + T[k] for k in range(n // 2)] + [even[k] - T[k] for k in range(n // 2)]
 
+@njit(parallel=True)
 def fft_iterative(signal):
     n = len(signal)
     signal = np.asarray(signal, dtype=np.complex128)
@@ -44,54 +31,97 @@ def fft_iterative(signal):
         if i < rev:
             signal[i], signal[rev] = signal[rev], signal[i]
     
-    # Cooley-Tukey FFT
     length = 2
     while length <= n:
         phase_shift_step = np.exp(-2j * np.pi / length)
+        # Use prange with a constant step size, here parallelizing the innermost k-loop
         for start in range(0, n, length):
-            phase_shift = 1
-            for k in range(length // 2):
+            phase_shifts = np.exp(-2j * np.pi * np.arange(length // 2) / length)
+            for k in prange(length // 2):
                 pos = start + k
                 offset = pos + length // 2
-                temp = phase_shift * signal[offset]
+                temp = phase_shifts[k] * signal[offset]
                 signal[offset] = signal[pos] - temp
                 signal[pos] += temp
-                phase_shift *= phase_shift_step
         length *= 2
         
     return signal
 
-# Пример сигнала
-fs = 8192
+def measure_time(func, *args, **kwargs):
+    start_time = time.time()
+    result = func(*args)
+    return time.time() - start_time
+
+def print_fft(fft_result):
+    freqs = np.fft.fftfreq(len(fft_result), d=t[1] - t[0])
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(freqs, np.abs(fft_result), 'b')
+    plt.title('Амплитудный спектр сигнала')
+    plt.xlabel('Частота (Гц)')
+    plt.ylabel('Амплитуда')
+    plt.xlim(0, 15) 
+    plt.grid()
+    plt.show()
+    
+def etalon_fft(signal):
+    fft_result = np.fft.fft(signal)
+    fft_freq = np.fft.fftfreq(t.size, d=t[1] - t[0])
+
+    # Амплитудный спектр
+    amplitude_spectrum = np.abs(fft_result)
+
+    # Фазовый спектр
+    phase_spectrum = np.angle(fft_result)
+
+    # Построение графиков
+    plt.figure(figsize=(12, 6))
+
+    # Амплитудный спектр
+    plt.subplot(2, 1, 1)
+    plt.plot(fft_freq, amplitude_spectrum)
+    plt.title('Амплитудный спектр')
+    plt.xlabel('Частота (Гц)')
+    plt.ylabel('Амплитуда')
+    plt.xlim(0, 15) 
+    plt.grid(True)
+
+    # Фазовый спектр
+    plt.subplot(2, 1, 2)
+    plt.plot(fft_freq, phase_spectrum)
+    plt.title('Фазовый спектр')
+    plt.xlabel('Частота (Гц)')
+    plt.ylabel('Фаза (радианы)')
+    plt.grid(True)
+    plt.xlim(0, 100) 
+
+    plt.tight_layout()
+    plt.show()
+
+
+# Signal
+fs = 32768
 t = np.linspace(0, 10, fs, endpoint=False)  # 256 точек в сигнале
 signal = np.sin(2 * np.pi * 5 * t) + 0.5 * np.sin(2 * np.pi * 10 * t)  # Синусоидальный сигнал с частотами 5 Гц и 10 Гц
 
-# Вызов FFT
-
-start = time.time()
-fft_result = fft_parallel(signal)
-end = time.time()
-print('FFT numba:', end - start, 'Sec')
 
 start = time.time()
 fft_result = fft(signal)
 end = time.time()
 print('FFT:', end - start, 'Sec')
+print_fft(fft_result)
+etalon_fft(signal)
 
-start = time.time()
-fft_result = fft_iterative(signal)
-end = time.time()
-print('FFT iterative:', end - start, 'Sec')
+times = []
+for num_threads in range(1, 9):
+    set_num_threads(num_threads)
+    elapsed_time = measure_time(fft_iterative, signal)
+    times.append(elapsed_time)
+    print(f"Threads: {num_threads}, Time: {elapsed_time:.4f}s")
 
-# Рассчитаем частоты для оси x
-freqs = np.fft.fftfreq(len(fft_result), d=1/fs)
+base_time = times[0]
+speedups = [base_time / t for t in times]
+for num_threads, speedup in zip(range(1, 9), speedups):
+    print(f"Threads: {num_threads}, Speedup: {speedup:.2f}")
 
-# Визуализация
-import matplotlib.pyplot as plt
-plt.figure(figsize=(10, 5))
-plt.plot(freqs, np.abs(fft_result), 'b')
-plt.title('Амплитудный спектр сигнала')
-plt.xlabel('Частота (Гц)')
-plt.ylabel('Амплитуда')
-plt.grid()
-plt.show()
+
