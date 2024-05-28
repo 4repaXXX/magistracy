@@ -5,7 +5,7 @@ from numba.np.ufunc.parallel import set_num_threads
 import matplotlib.pyplot as plt
 
 
-def fft(signal):
+def fft_np(signal):
     n = len(signal)
     if n <= 1:
         return signal
@@ -14,38 +14,29 @@ def fft(signal):
     T = [np.exp(-2j * np.pi * k / n) * odd[k] for k in range(n // 2)]
     return [even[k] + T[k] for k in range(n // 2)] + [even[k] - T[k] for k in range(n // 2)]
 
+def fft(signal):
+    N = len(signal)
+    output = np.zeros_like(signal, dtype=np.complex128)
+    for i in range(N): 
+        sum_val = 0.0j
+        for k in range(N):
+            angle = -2j * np.pi * k * i / N
+            sum_val += signal[k] * np.exp(angle)
+        output[i] = sum_val
+    return output
+
+
 @njit(parallel=True)
 def fft_iterative(signal):
-    n = len(signal)
-    signal = np.asarray(signal, dtype=np.complex128)
-    
-    # Bit-reversal permutation
-    indices = np.arange(n)
-    rev = 0
-    for i in range(1, n):
-        bit = n >> 1
-        while rev >= bit:
-            rev -= bit
-            bit >>= 1
-        rev += bit
-        if i < rev:
-            signal[i], signal[rev] = signal[rev], signal[i]
-    
-    length = 2
-    while length <= n:
-        phase_shift_step = np.exp(-2j * np.pi / length)
-        # Use prange with a constant step size, here parallelizing the innermost k-loop
-        for start in range(0, n, length):
-            phase_shifts = np.exp(-2j * np.pi * np.arange(length // 2) / length)
-            for k in prange(length // 2):
-                pos = start + k
-                offset = pos + length // 2
-                temp = phase_shifts[k] * signal[offset]
-                signal[offset] = signal[pos] - temp
-                signal[pos] += temp
-        length *= 2
-        
-    return signal
+    N = len(signal)
+    output = np.zeros_like(signal, dtype=np.complex128)
+    for i in prange(N): 
+        sum_val = 0.0j
+        for k in range(N):
+            angle = -2j * np.pi * k * i / N
+            sum_val += signal[k] * np.exp(angle)
+        output[i] = sum_val
+    return output
 
 def measure_time(func, *args, **kwargs):
     start_time = time.time()
@@ -62,6 +53,25 @@ def print_fft(fft_result):
     plt.ylabel('Амплитуда')
     plt.xlim(0, 15) 
     plt.grid()
+    plt.show()
+    
+def print_mesure_fft(num_threads_list, times, speedups):
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(num_threads_list, times, marker='o')
+    plt.xlabel('Number of Threads')
+    plt.ylabel('Execution Time (seconds)')
+    plt.title('FFT Execution Time vs. Number of Threads')
+    plt.grid(True)
+
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(num_threads_list, speedups, marker='o', color='red')
+    plt.xlabel('Number of Threads')
+    plt.ylabel('Speedup')
+    plt.title('Speedup vs. Number of Threads')
+    plt.grid(True)
+    plt.tight_layout()
     plt.show()
     
 def etalon_fft(signal):
@@ -110,18 +120,18 @@ fft_result = fft(signal)
 end = time.time()
 print('FFT:', end - start, 'Sec')
 print_fft(fft_result)
-etalon_fft(signal)
 
-times = []
-for num_threads in range(1, 9):
-    set_num_threads(num_threads)
-    elapsed_time = measure_time(fft_iterative, signal)
-    times.append(elapsed_time)
-    print(f"Threads: {num_threads}, Time: {elapsed_time:.4f}s")
+# times = []
+# for num_threads in range(1, 9):
+#     set_num_threads(num_threads)
+#     elapsed_time = measure_time(fft_iterative, signal)
+#     times.append(elapsed_time)
+#     print(f"Threads: {num_threads}, Time: {elapsed_time:.4f}s")
 
-base_time = times[0]
-speedups = [base_time / t for t in times]
-for num_threads, speedup in zip(range(1, 9), speedups):
-    print(f"Threads: {num_threads}, Speedup: {speedup:.2f}")
-
+# base_time = times[0]
+# speedups = [base_time / t for t in times]
+# for num_threads, speedup in zip(range(1, 9), speedups):
+#     print(f"Threads: {num_threads}, Speedup: {speedup:.2f}")
+    
+# print_mesure_fft(range(1, 9), times, speedups)
 
