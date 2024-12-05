@@ -49,7 +49,6 @@ def alice_process(message, bob_public_key, alice_private_key):
     encryptor = cipher_aes.encryptor()
     ciphertext = iv + encryptor.update(message) + encryptor.finalize()
 
-    # Encrypt the session key with Bob's public key
     encrypted_session_key = bob_public_key.encrypt(
         session_key,
         padding.OAEP(

@@ -31,7 +31,6 @@ def gaussian_high_pass_filter(shape, cutoff):
     rows, cols = shape
     crow, ccol = rows // 2, cols // 2
 
-    # Создание сетки координат
     x = np.linspace(-ccol, ccol, cols)
     y = np.linspace(-crow, crow, rows)
     x, y = np.meshgrid(x, y)
@@ -53,10 +52,11 @@ def gaussian_high_pass_filter(shape, cutoff):
     return mask
 
 def butterworth_high_pass_filter(shape, cutoff, order):
+    # Возвращает ядро Баттерворта
+    
     rows, cols = shape
     crow, ccol = rows // 2, cols // 2
 
-    # Создание сетки координат
     x = np.linspace(-ccol, ccol, cols)
     y = np.linspace(-crow, crow, rows)
     x, y = np.meshgrid(x, y)
@@ -71,3 +71,14 @@ def butterworth_high_pass_filter(shape, cutoff, order):
     #         mask[x, y] = 1 / (1 + (cutoff / radius) ** (2 * order))
 
     return mask
+
+def laplasian_kernel(shape):
+    # Возвращает ядро Лапласиана для заданного размера
+    # rows, cols = shape
+    # ky, kx = np.mgrid[0: rows, 0 : cols]
+    # kernel = -4 * np.pi**2 * (kx**2 + ky**2)
+    
+    rows, cols = shape
+    ky, kx = np.mgrid[-rows//2 + 1 : rows//2 + 1, -cols//2 + 1 : cols//2 + 1]
+    kernel = -4 * np.pi**2 * (kx**2 + ky**2)
+    return kernel
